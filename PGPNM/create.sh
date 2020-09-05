@@ -2,7 +2,7 @@
 
 #Compile Compiler
 cd ..
-make -j2
+CFLAGS="-g -O0" CXXFLAGS="-g -O0" make -j2
 
 #Clone from GIT
 cd ../
@@ -14,7 +14,7 @@ cp ../aflnet/PGPNM/pg.patch pg.patch
 patch -p1 < pg.patch
 
 #Compile
-CC=`pwd`/../aflnet/afl-clang CXX=`pwd`/../aflnet/afl-clang++ ./configure --prefix=`pwd`/../pgbuild
+CC=`pwd`/../aflnet/afl-clang CXX=`pwd`/../aflnet/afl-clang++ CFLAGS="-g -O0" CXXFLAGS="-g -O0" ./configure --prefix=`pwd`/../pgbuild
 make -j20 && make install
 
 
