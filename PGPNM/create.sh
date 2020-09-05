@@ -1,8 +1,11 @@
 #!/bin/bash 
 
+#Compile Compiler
+cd ..
+make -j2
 
 #Clone from GIT
-cd ../../
+cd ../
 git clone --single-branch --depth=1 --branch=REL_12_0  https://github.com/postgres/postgres
 cd postgres
 
