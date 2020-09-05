@@ -1,0 +1,26 @@
+diff --git a/src/backend/postmaster/pgstat.c b/src/backend/postmaster/pgstat.c
+index 309378ae54..eceffa32dc 100644
+--- a/src/backend/postmaster/pgstat.c
++++ b/src/backend/postmaster/pgstat.c
+@@ -756,6 +756,7 @@ pgstat_start(void)
+ 	time_t		curtime;
+ 	pid_t		pgStatPid;
+ 
++	return 0;
+ 	/*
+ 	 * Check that the socket is there, else pgstat_init failed and we can do
+ 	 * nothing useful.
+diff --git a/src/backend/postmaster/postmaster.c b/src/backend/postmaster/postmaster.c
+index b4d475bb0b..7bc20d7614 100644
+--- a/src/backend/postmaster/postmaster.c
++++ b/src/backend/postmaster/postmaster.c
+@@ -5451,6 +5451,8 @@ StartChildProcess(AuxProcType type)
+ 	int			ac = 0;
+ 	char		typebuf[32];
+ 
++	if (type == BgWriterProcess || type == WalWriterProcess || type == WalReceiverProcess)
++		return 0;
+ 	/*
+ 	 * Set up command-line arguments for subprocess
+ 	 */
+
