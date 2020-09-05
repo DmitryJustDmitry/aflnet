@@ -6,31 +6,11 @@
     "configurations": [
         
         {
-            "name": "Debug afl-fuzz (test)",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/afl-fuzz",
-            "args": ["--help"],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                }
-            ],
-            "miDebuggerPath": "/usr/bin/gdb"
-        },
-        {
             "name": "Debug afl-fuzz (Full)",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/afl-fuzz",
-            "args": ["-i ../in -o ../out -- /bin/ls @@"],
+            "args": ["-i", "PGPNM/in", "-o", "PGPNM/out", "-t 10000 -N tcp://127.0.0.1/15432 -P PGSQL -D 700 -K -E -- ../pgbuild/bin/postgres -D ../pgbuild/cls0"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
