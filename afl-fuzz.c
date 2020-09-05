@@ -782,9 +782,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 
       for(i=1; i < state_count; i++) {
         unsigned int curStateID = state_sequence[i];
-        char fromState[STATE_STR_LEN], toState[STATE_STR_LEN];
-        snprintf(fromState, STATE_STR_LEN, "%d", prevStateID);
-        snprintf(toState, STATE_STR_LEN, "%d", curStateID);
+        char fromState[10], toState[10];
+        sprintf(fromState, "%d", prevStateID);
+        sprintf(toState, "%d", curStateID);
 
         //Check if the prevStateID and curStateID have been added to the state machine as vertices
         //Check also if the edge prevStateID->curStateID has been added
@@ -8968,7 +8968,10 @@ int main(int argc, char** argv) {
         } else if (!strcmp(optarg, "TLS")) {
           extract_requests = &extract_requests_tls;
           extract_response_codes = &extract_response_codes_tls;
-        } else {
+        } else if (!strcmp(optarg, "PGSQL")) {
+          extract_requests = &extract_requests_postgres;
+          extract_response_codes = &extract_response_codes_postgres;
+        }else {
           FATAL("%s protocol is not supported yet!", optarg);
         }
 
