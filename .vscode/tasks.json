@@ -6,7 +6,7 @@
         {
             "label": "Build afl-fuzz and friends",
             "type": "shell",
-            "command": "make clean && make -j2",            
+            "command": "make clean && CFLAGS=\"-g -O0\" make -j2",            
             "options": 
             {
                 "cwd": "${workspaceFolder}"

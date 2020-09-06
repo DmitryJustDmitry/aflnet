@@ -23,3 +23,5 @@ cd ../aflnet/PGPNM
 ../../pgbuild/bin/initdb -D ../../pgbuild/cls0
 cp -f postgresql.conf ../../pgbuild/cls0/postgresql.conf
 
+#Tune the OS for fuzzing
+su root -c "echo core >/proc/sys/kernel/core_pattern"

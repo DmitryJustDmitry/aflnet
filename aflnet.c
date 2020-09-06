@@ -584,8 +584,7 @@ region_t* extract_requests_postgres(unsigned char* buf, unsigned int buf_size, u
   unsigned int mem_count = 0;
   unsigned int mem_size = 1024;
   unsigned int region_count = 0;
-  region_t *regions = NULL;
-  char terminator[2] = {0x0D, 0x0A};
+  region_t *regions = NULL;  
 
   mem=(char *)ck_alloc(mem_size);
 
@@ -593,80 +592,45 @@ region_t* extract_requests_postgres(unsigned char* buf, unsigned int buf_size, u
   unsigned int cur_end = 0;
   while (byte_count < buf_size) {
 
-    memcpy(&mem[mem_count], buf + byte_count++, 1);
+    memcpy(&mem[mem_count++], buf + byte_count++, 1);
+    
 
-    //Check if the region buffer length is at least 6 bytes
-    //Why 6 bytes? It is because both the SSH identification and the normal message are longer than 6 bytes
-    //For normal message, it starts with message size (4 bytes), #padding_bytes (1 byte) and message code (1 byte)
-    if (mem_count >= 6) {
-      if (!strncmp(mem, "SSH-", 4)) {
-        //It could be an identification message
-        //Find terminator (0x0D 0x0A)
-        while ((byte_count < buf_size) && (memcmp(&mem[mem_count - 1], terminator, 2))) {
-          if (mem_count == mem_size - 1) {
-            //enlarge the mem buffer
-            mem_size = mem_size * 2;
-            mem=(char *)ck_realloc(mem, mem_size);
-          }
-          memcpy(&mem[++mem_count], buf + byte_count++, 1);
-          cur_end++;
-        }
-
-        //Create one region
+    if (region_count == 0)
+    {
+      if (mem_count == 4)
+      {
         region_count++;
+         //Extract the packet length
+        char temp[4];
+        memcpy(temp, &mem, 4);
+        unsigned int packet_len = (unsigned int) atoi(temp);
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_end;
+        regions[region_count - 1].end_byte = packet_len;
         regions[region_count - 1].state_sequence = NULL;
         regions[region_count - 1].state_count = 0;
 
-        //Check if the last byte has been reached
-        if (cur_end < buf_size - 1) {
-          mem_count = 0;
-          cur_start = cur_end + 1;
-          cur_end = cur_start;
-        }
-      } else {
-        //It could be a normal message
-        //Extract the message size stored in the first 4 bytes
-        unsigned int* size_buf = (unsigned int*)&mem[0];
-        unsigned int message_size = (unsigned int)ntohl(*size_buf);
-        unsigned char message_code = (unsigned char)mem[5];
-        //and skip the payload and the MAC
-        unsigned int bytes_to_skip = message_size - 2;
-        if ((message_code >= 20) && (message_code <= 49)) {
-          //Do nothing
-        } else {
-          bytes_to_skip += 8;
-        }
-
-        unsigned int temp_count = 0;
-        while ((byte_count < buf_size) && (temp_count < bytes_to_skip)) {
-          byte_count++;
-          cur_end++;
-          temp_count++;
-        }
-
-        if (byte_count < buf_size) {
-          byte_count--;
-          cur_end--;
-        }
-
-        //Create one region
-        region_count++;
-        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-        regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_end;
-        regions[region_count - 1].state_sequence = NULL;
-        regions[region_count - 1].state_count = 0;
-
-        //Check if the last byte has been reached
-        if (cur_end < buf_size - 1) {
-          mem_count = 0;
-          cur_start = cur_end + 1;
-          cur_end = cur_start;
-        }
+        mem_count = 0;
+        cur_start = cur_end + 1;
+        cur_end = packet_len;
       }
+    }
+else
+{
+  
+
+    //Check if the last four bytes are 0x0D0A0D0A
+    if ((mem_count > 3)) {
+      region_count++;
+      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+      regions[region_count - 1].start_byte = cur_start;
+      regions[region_count - 1].end_byte = cur_end;
+      regions[region_count - 1].state_sequence = NULL;
+      regions[region_count - 1].state_count = 0;
+
+      mem_count = 0;
+      cur_start = cur_end + 1;
+      cur_end = cur_start;
     } else {
       mem_count++;
       cur_end++;
@@ -689,19 +653,21 @@ region_t* extract_requests_postgres(unsigned char* buf, unsigned int buf_size, u
       }
     }
   }
+  }
+
   if (mem) ck_free(mem);
 
-  //in case region_count equals zero, it means that the structure of the buffer is broken
-  //hence we create one region for the whole buffer
-  if ((region_count == 0) && (buf_size > 0)) {
-    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
-    regions[0].start_byte = 0;
-    regions[0].end_byte = buf_size - 1;
-    regions[0].state_sequence = NULL;
-    regions[0].state_count = 0;
+  // //in case region_count equals zero, it means that the structure of the buffer is broken
+  // //hence we create one region for the whole buffer
+  // if ((region_count == 0) && (buf_size > 0)) {
+  //   regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+  //   regions[0].start_byte = 0;
+  //   regions[0].end_byte = buf_size - 1;
+  //   regions[0].state_sequence = NULL;
+  //   regions[0].state_count = 0;
 
-    region_count = 1;
-  }
+  //   region_count = 1;
+  
 
   *region_count_ref = region_count;
   return regions;
@@ -952,58 +918,69 @@ unsigned int* extract_response_codes_dns(unsigned char* buf, unsigned int buf_si
 
 unsigned int* extract_response_codes_postgres(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
 {
-   char mem[7];
-   unsigned int byte_count = 0;
-   unsigned int *state_sequence = NULL;
-   unsigned int state_count = 0;
+  char *mem;
+  unsigned int byte_count = 0;
+  unsigned int mem_count = 0;
+  unsigned int mem_size = 1024;
+  unsigned int *state_sequence = NULL;
+  unsigned int state_count = 0;  
 
-   //Initial state
-   state_count++;
-   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-   if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
-   state_sequence[state_count - 1] = 0;
+  mem=(char *)ck_alloc(mem_size);
 
-   while (byte_count < buf_size) {
-      memcpy(mem, buf + byte_count, 6);
-      byte_count += 6;
+  state_count++;
+  state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+  state_sequence[state_count - 1] = 0;
 
-      /* If this is the identification message */
-      if (strstr(mem, "SSH")) {
-        //Read until \x0D\x0A
-        char tmp = 0x00;
-        while (tmp != 0x0A) {
-          memcpy(&tmp, buf + byte_count, 1);
-          byte_count += 1;
-        }
+  while (byte_count < buf_size) {
+    memcpy(&mem[mem_count], buf + byte_count++, 1);
+
+    //First packet in PGSQL response is about the fact we don`t use SSL - just one-byte packet
+    if (state_count == 1)
+    {      
+      {        
+        unsigned int message_code = (unsigned int) atoi(mem);
         state_count++;
         state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-        if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
-        state_sequence[state_count - 1] = 256; //Identification
-      } else {
-        //Extract the message type and skip the payload and the MAC
-        unsigned int* size_buf = (unsigned int*)&mem[0];
-        unsigned int message_size = (unsigned int)ntohl(*size_buf);
-
-        //Break if the response does not adhere to the known format(s)
-        //Normally, it only happens in the last response
-        if (message_size - 2 > buf_size - byte_count) break;
-
-        unsigned char message_code = (unsigned char)mem[5];
-        state_count++;
-        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-        if (state_sequence == NULL) PFATAL("Unable realloc a memory region to store state sequence");
         state_sequence[state_count - 1] = message_code;
-        /* If this is a KEY exchange related message */
-        if ((message_code >= 20) && (message_code <= 49)) {
-          //Do nothing
-        } else {
-          message_size += 8;
-        }
-        byte_count += message_size - 2;
+        mem_count = 0;
       }
-   }
-   *state_count_ref = state_count;
-   return state_sequence;
+    }
+        
+    else
+    {
+      /* code */
+    
+    
+    if ((mem_count > 0)) {
+      if ((mem_count >= 5)) {
+        //Extract the response code which is the first 3 bytes
+        char temp[4];
+        memcpy(temp, &mem[9], 4);
+        temp[3] = 0x0;
+        unsigned int message_code = (unsigned int) atoi(temp);
+
+        if (message_code == 0) break;
+
+        state_count++;
+        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+        state_sequence[state_count - 1] = message_code;
+        mem_count = 0;
+      } else {
+        mem_count = 0;
+      }
+    } else {
+      mem_count++;
+      if (mem_count == mem_size) {
+        //enlarge the mem buffer
+        mem_size = mem_size * 2;
+        mem=(char *)ck_realloc(mem, mem_size);
+      }
+    }
+    }
+  }
+  if (mem) ck_free(mem);
+  *state_count_ref = state_count;
+  return state_sequence;
 }
 
 
