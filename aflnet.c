@@ -577,96 +577,128 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
   return regions;
 }
 
-region_t* extract_requests_postgres(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
+region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
 {
   char *mem;
   unsigned int byte_count = 0;
   unsigned int mem_count = 0;
   unsigned int mem_size = 1024;
   unsigned int region_count = 0;
-  region_t *regions = NULL;  
+  region_t *regions = NULL;
 
-  mem=(char *)ck_alloc(mem_size);
+  mem = (char *)ck_alloc(mem_size);
 
   unsigned int cur_start = 0;
   unsigned int cur_end = 0;
-  while (byte_count < buf_size) {
+  while (byte_count < buf_size)
+  {
 
     memcpy(&mem[mem_count++], buf + byte_count++, 1);
-    
 
+    //The first short packet without the Code byte (ask for work with SSL)
     if (region_count == 0)
     {
       if (mem_count == 4)
       {
         region_count++;
-         //Extract the packet length
-        char temp[4];
-        memcpy(temp, &mem, 4);
-        unsigned int packet_len = (unsigned int) atoi(temp);
+        //Extract the packet length
+        unsigned char temp[4];
+        memcpy(temp, mem, 4);
+        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = packet_len;
+        regions[region_count - 1].end_byte = cur_start + packet_len - 1;
         regions[region_count - 1].state_sequence = NULL;
         regions[region_count - 1].state_count = 0;
 
-        mem_count = 0;
-        cur_start = cur_end + 1;
-        cur_end = packet_len;
+        mem_count = 0;      
+        byte_count = byte_count + (packet_len - 4);
+        cur_start = byte_count;
+        cur_end = byte_count;
       }
     }
-else
-{
-  
-
-    //Check if the last four bytes are 0x0D0A0D0A
-    if ((mem_count > 3)) {
-      region_count++;
-      regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-      regions[region_count - 1].start_byte = cur_start;
-      regions[region_count - 1].end_byte = cur_end;
-      regions[region_count - 1].state_sequence = NULL;
-      regions[region_count - 1].state_count = 0;
-
-      mem_count = 0;
-      cur_start = cur_end + 1;
-      cur_end = cur_start;
-    } else {
-      mem_count++;
-      cur_end++;
-
-      //Check if the last byte has been reached
-      if (cur_end == buf_size - 1) {
+    //The first short real PGSQL packet without the Code byte (hello from client)
+    else if (region_count == 1)
+    {
+      if (mem_count == 4)
+      {
         region_count++;
+        //Extract the packet length
+        unsigned char temp[4];
+        memcpy(temp, mem, 4);
+        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_end;
+        regions[region_count - 1].end_byte = cur_start + packet_len - 1;
         regions[region_count - 1].state_sequence = NULL;
         regions[region_count - 1].state_count = 0;
-        break;
-      }
 
-      if (mem_count == mem_size) {
-        //enlarge the mem buffer
-        mem_size = mem_size * 2;
-        mem=(char *)ck_realloc(mem, mem_size);
+        mem_count = 0;      
+        byte_count = byte_count + (packet_len - 4);
+        cur_start = byte_count;
+        cur_end = byte_count;
       }
     }
+    //All the other packets having a Code byte
+    else
+    { 
+      //Work with typical packets (1 byte code + 4 bytes length)     
+      if (mem_count == 5)
+      {
+        region_count++;
+        //Extract the packet code
+        char code = mem[0];
+        //Extract the packet length
+        unsigned char temp[4];
+        memcpy(temp, &mem[1], 4);
+        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
+        //unsigned int packet_hash = packet_len ^ code << 24;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = cur_start + packet_len; //No -1 because of Ceode byte before 4-length bytes
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+
+        mem_count = 0;      
+        byte_count = byte_count + (packet_len - 4);
+        cur_start = byte_count;
+        cur_end = byte_count;
+      }
+      //Check if the last byte has been reached
+      else if (byte_count == buf_size)
+        {
+          region_count++;
+          regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+          regions[region_count - 1].start_byte = cur_start;
+          regions[region_count - 1].end_byte = buf_size - cur_start - 1;
+          regions[region_count - 1].state_sequence = NULL;
+          regions[region_count - 1].state_count = 0;
+          break;
+        }
+    }
+
+    //Enlarge the mem buffer
+    if (mem_count == mem_size)
+    {      
+      mem_size = mem_size * 2;
+      mem = (char *)ck_realloc(mem, mem_size);
+    }          
   }
-  }
+  
 
   if (mem) ck_free(mem);
 
-  // //in case region_count equals zero, it means that the structure of the buffer is broken
-  // //hence we create one region for the whole buffer
-  // if ((region_count == 0) && (buf_size > 0)) {
-  //   regions = (region_t *)ck_realloc(regions, sizeof(region_t));
-  //   regions[0].start_byte = 0;
-  //   regions[0].end_byte = buf_size - 1;
-  //   regions[0].state_sequence = NULL;
-  //   regions[0].state_count = 0;
+  //in case region_count equals zero, it means that the structure of the buffer is broken
+  //hence we create one region for the whole buffer
+  if ((region_count == 0) && (buf_size > 0)) {
+    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
+    regions[0].start_byte = 0;
+    regions[0].end_byte = buf_size - 1;
+    regions[0].state_sequence = NULL;
+    regions[0].state_count = 0;
 
-  //   region_count = 1;
+    region_count = 1;
+  }
   
 
   *region_count_ref = region_count;
