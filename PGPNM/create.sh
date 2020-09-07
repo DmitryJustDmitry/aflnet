@@ -4,10 +4,10 @@
 cd ..
 CFLAGS="-g -O0" CXXFLAGS="-g -O0" make -j2
 cd llvm_mode
-make && make install && cd ..
+make && make install
 
 #Clone from GIT
-cd ../
+cd ../..
 git clone --single-branch --depth=1 --branch=REL_12_0  https://github.com/postgres/postgres
 cd postgres
 
