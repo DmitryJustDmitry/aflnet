@@ -1,10 +1,10 @@
 #!/bin/bash 
 
 #Compile Compiler
-cd ../llvm_mode
-make && make install
 cd ..
 CFLAGS="-g -O0" CXXFLAGS="-g -O0" make -j2
+cd llvm_mode
+make && make install && cd ..
 
 #Clone from GIT
 cd ../
