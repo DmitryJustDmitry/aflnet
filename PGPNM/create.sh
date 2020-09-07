@@ -1,6 +1,8 @@
 #!/bin/bash 
 
 #Compile Compiler
+cd ../llvm-mode
+make && make install
 cd ..
 CFLAGS="-g -O0" CXXFLAGS="-g -O0" make -j2
 
