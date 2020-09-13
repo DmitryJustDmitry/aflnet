@@ -997,7 +997,7 @@ int send_over_network()
 
   //Wait a bit for the server initialization
   usleep(server_wait_usecs);
-
+ 
   //Clear the response buffer and reset the response buffer size
   if (response_buf) {
     ck_free(response_buf);
@@ -1098,13 +1098,15 @@ HANDLE_RESPONSES:
   close(sockfd);
 
   if (likely_buggy && false_negative_reduction) return 0;
-
+ 
   if (terminate_child && (child_pid > 0)) kill(child_pid, SIGTERM);
 
   //give the server a bit more time to gracefully terminate
   while(1) {
-    int status = kill(child_pid, 0);
-    if ((status != 0) && (errno == ESRCH)) break;
+    break;
+    //#######################
+    //int status = kill(0, 0);
+    //if ((status != 0) && (errno == ESRCH)) break;
   }
 
   return 0;
@@ -3163,8 +3165,8 @@ static u8 run_target(char** argv, u32 timeout) {
 
       setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
 
-      /* Isolate the process and configure standard descriptors. If out_file is
-         specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
+       /* Isolate the process and configure standard descriptors. If out_file is
+          specified, stdin is /dev/null; otherwise, out_fd is cloned instead. */
 
       setsid();
 
@@ -3182,7 +3184,7 @@ static u8 run_target(char** argv, u32 timeout) {
 
       }
 
-      /* On Linux, would be faster to use O_CLOEXEC. Maybe TODO. */
+       /* On Linux, would be faster to use O_CLOEXEC. Maybe TODO. */
 
       close(dev_null_fd);
       close(out_dir_fd);
@@ -3199,9 +3201,9 @@ static u8 run_target(char** argv, u32 timeout) {
       setenv("MSAN_OPTIONS", "exit_code=" STRINGIFY(MSAN_ERROR) ":"
                              "symbolize=0:"
                              "msan_track_origins=0", 0);
-
+      
       execv(target_path, argv);
-
+   
       /* Use a distinctive bitmap value to tell the parent about execv()
          falling through. */
 

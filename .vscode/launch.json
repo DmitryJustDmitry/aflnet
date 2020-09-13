@@ -10,7 +10,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/afl-fuzz",
-            "args": ["-i", "PGPNM/in", "-o", "PGPNM/out", "-t", "10000", "-N", "tcp://127.0.0.1/15432", "-P", "PGSQL", "-D", "700", "-K", "-E", "--", "../pgbuild/bin/postgres", "-D", "../pgbuild/cls0"],
+            "args": ["-i", "PGPNM/in", "-o", "PGPNM/out", "-t", "100000", "-N", "tcp://127.0.0.1/15432", "-w", "100000", "-P", "PGSQL", "-D", "200000", "-K", "-E", "--", "/home/crusher/stateful/pgbuild/bin/postgres", "-D", "/home/crusher/stateful/pgbuild/cls0"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -19,7 +19,7 @@
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
+                    "text": "-enable-pretty-printing", //"-gdb-set follow-fork-mode child", 
                     "ignoreFailures": true
                 }
             ],

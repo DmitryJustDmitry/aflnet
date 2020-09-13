@@ -605,6 +605,9 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
         unsigned char temp[4];
         memcpy(temp, mem, 4);
         unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
+        //This guard is for mutations - when the mutated 4 bytes give length that is larger than buf_size
+        if (packet_len > buf_size - cur_start)
+            packet_len = buf_size - cur_start;
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
         regions[region_count - 1].end_byte = cur_start + packet_len - 1;
@@ -963,58 +966,57 @@ unsigned int* extract_response_codes_postgres(unsigned char* buf, unsigned int b
   state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
   state_sequence[state_count - 1] = 0;
 
-  while (byte_count < buf_size) {
-    memcpy(&mem[mem_count], buf + byte_count++, 1);
+  while (byte_count < buf_size)
+  {
+    memcpy(&mem[mem_count++], buf + byte_count++, 1);
 
     //First packet in PGSQL response is about the fact we don`t use SSL - just one-byte packet
     if (state_count == 1)
-    {      
-      {        
-        unsigned int message_code = (unsigned int) atoi(mem);
-        state_count++;
-        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-        state_sequence[state_count - 1] = message_code;
-        mem_count = 0;
-      }
-    }
-        
-    else
     {
-      /* code */
-    
-    
-    if ((mem_count > 0)) {
-      if ((mem_count >= 5)) {
-        //Extract the response code which is the first 3 bytes
-        char temp[4];
-        memcpy(temp, &mem[9], 4);
-        temp[3] = 0x0;
-        unsigned int message_code = (unsigned int) atoi(temp);
-
-        if (message_code == 0) break;
-
-        state_count++;
-        state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
-        state_sequence[state_count - 1] = message_code;
-        mem_count = 0;
-      } else {
-        mem_count = 0;
-      }
-    } else {
-      mem_count++;
-      if (mem_count == mem_size) {
-        //enlarge the mem buffer
-        mem_size = mem_size * 2;
-        mem=(char *)ck_realloc(mem, mem_size);
-      }
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = mem[0];
+      mem_count = 0;
     }
+    //Typical responses
+    else if (mem_count == 5)
+    {
+      //Extract the packet length and the response code
+      unsigned char temp[4];
+      memcpy(temp, mem + 1, 4);
+      unsigned int packet_len = temp[3] + temp[2] * 0x100 + temp[1] * 0x10000 + temp[0] * 0x1000000;
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      state_sequence[state_count - 1] = packet_len + mem[0] * 0x1000000;
+      mem_count = 0;
+      memset(mem, 0, 5);
+
+      //Step to next packet 
+      byte_count += packet_len - 4;
     }
+
+    //Just an incorrect Tail
+    else if (byte_count == buf_size)
+    {
+      state_count++;
+      state_sequence = (unsigned int *)ck_realloc(state_sequence, state_count * sizeof(unsigned int));
+      unsigned int message_code = mem[3] + mem[2]*0x100 + mem[1]*0x10000 + mem[0]*0x1000000;
+      state_sequence[state_count - 1] = message_code;      
+      mem_count=0;
+    }
+     //Enlarge the mem buffer
+    if (mem_count == mem_size)
+    {      
+      mem_size = mem_size * 2;
+      mem = (char *)ck_realloc(mem, mem_size);
+    }        
   }
-  if (mem) ck_free(mem);
+  if (mem)
+    ck_free(mem);
+
   *state_count_ref = state_count;
   return state_sequence;
 }
-
 
 static unsigned char dtls12_version[2] = {0xFE, 0xFD};
 
@@ -1611,7 +1613,7 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
 
   u8 *out = NULL;
 
-  char strState[10];
+  char strState[11];
   int len = 0;
   for (i = 0; i < stateCount; i++) {
     //Limit the loop to shorten the output string
