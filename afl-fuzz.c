@@ -782,9 +782,9 @@ void update_state_aware_variables(struct queue_entry *q, u8 dry_run)
 
       for(i=1; i < state_count; i++) {
         unsigned int curStateID = state_sequence[i];
-        char fromState[10], toState[10];
-        sprintf(fromState, "%d", prevStateID);
-        sprintf(toState, "%d", curStateID);
+        char fromState[STATE_STR_LEN], toState[STATE_STR_LEN];
+        snprintf(fromState, STATE_STR_LEN, "%d", prevStateID);
+        snprintf(toState, STATE_STR_LEN, "%d", curStateID);
 
         //Check if the prevStateID and curStateID have been added to the state machine as vertices
         //Check also if the edge prevStateID->curStateID has been added
@@ -1085,11 +1085,11 @@ HANDLE_RESPONSES:
 
   net_recv(sockfd, timeout, poll_wait_msecs, &response_buf, &response_buf_size);
 
-  if (messages_sent > 0) {
+  if (messages_sent > 0 && response_bytes != NULL) {
     response_bytes[messages_sent - 1] = response_buf_size;
   }
 
-  //wait a bit letting the server to complete its remaing task(s)
+  //wait a bit letting the server to complete its remaining task(s)
   memset(session_virgin_bits, 255, MAP_SIZE);
   while(1) {
     if (has_new_bits(session_virgin_bits) != 2) break;
@@ -5390,10 +5390,17 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
     u32 len;
     //Identify region size
     if (i == max_seed_region_count) {
+      // printf("[DEBUG] max_seed_region_count - path\n");
+      // printf("[DEBUG] end_byte = %d\n", regions[region_count - 1].end_byte);
+      // printf("[DEBUG] start_byte = %d\n", regions[i].start_byte);
       len = regions[region_count - 1].end_byte - regions[i].start_byte + 1;
     } else {
+      // printf("[DEBUG] end_byte = %d\n", regions[i].end_byte);
+      // printf("[DEBUG] start_byte = %d\n", regions[i].start_byte);
       len = regions[i].end_byte - regions[i].start_byte + 1;
     }
+
+    // printf("[DEBUG] len = %u\n", len);
 
     //Create a new message
     message_t *m = (message_t *) ck_alloc(sizeof(message_t));
@@ -8056,7 +8063,7 @@ static void usage(u8* argv0) {
        "Settings for network protocol fuzzing (AFLNet):\n\n"
 
        "  -N netinfo    - server information (e.g., tcp://127.0.0.1/8554)\n"
-       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS)\n"
+       "  -P protocol   - application protocol to be tested (e.g., RTSP, FTP, DTLS12, DNS, SMTP, SSH, TLS)\n"
        "  -D usec       - waiting time (in micro seconds) for the server to initialize\n"
        "  -W msec       - waiting time (in miliseconds) for receiving the first response to each input sent\n"
        "  -w usec       - waiting time (in micro seconds) for receiving follow-up responses\n"

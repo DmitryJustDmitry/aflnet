@@ -321,13 +321,13 @@ region_t* extract_requests_dicom(unsigned char* buf, unsigned int buf_size, unsi
   unsigned int byte_count = 0;
   while (byte_count < buf_size) {
 
-    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break; 
-    
+    if ((byte_count + 2 >= buf_size) || (byte_count + 5 >= buf_size)) break;
+
     // Bytes from third to sixth encode the PDU length.
-    pdu_length = 
-      (buf[byte_count + 5]) | 
-      (buf[byte_count + 4] << 8)  | 
-      (buf[byte_count + 3] << 16) | 
+    pdu_length =
+      (buf[byte_count + 5]) |
+      (buf[byte_count + 4] << 8)  |
+      (buf[byte_count + 3] << 16) |
       (buf[byte_count + 2] << 24);
 
     // DICOM Header(6 bytes) includes PDU type and PDU length.
@@ -579,20 +579,34 @@ region_t* extract_requests_ftp(unsigned char* buf, unsigned int buf_size, unsign
 
 region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, unsigned int *region_count_ref)
 {
+  // temporary buffer
   char *mem;
+
+  // Amount of processed bytes
   unsigned int byte_count = 0;
+
+  // Current size of processing buffer
   unsigned int mem_count = 0;
+
+  // processing buffer total size
   unsigned int mem_size = 1024;
+  
+  // Number of "regions" aka requests
   unsigned int region_count = 0;
   region_t *regions = NULL;
 
   mem = (char *)ck_alloc(mem_size);
 
+  // previous region end + 1 (current region start)
   unsigned int cur_start = 0;
+  
+  // Unused
   unsigned int cur_end = 0;
+
+  // try to construct regions, until we still have some data
   while (byte_count < buf_size)
   {
-
+    // Copy one byte of a request into processing buffer
     memcpy(&mem[mem_count++], buf + byte_count++, 1);
 
     //The first short packet without the Code byte (ask for work with SSL)
@@ -602,12 +616,14 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
       {
         region_count++;
         //Extract the packet length
-        unsigned char temp[4];
-        memcpy(temp, mem, 4);
-        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
-        //This guard is for mutations - when the mutated 4 bytes give length that is larger than buf_size
-        if (packet_len > buf_size - cur_start)
-            packet_len = buf_size - cur_start;
+        unsigned int packet_len = (mem[0] << 24) | (mem[1] << 16) | (mem[2] << 8) | (mem[3]);
+
+        // This guard is for mutations - when the mutated 4 bytes give length that is larger than buf_size
+        // or when the mutated size is 0
+        if ((packet_len > buf_size - cur_start) || packet_len == 0) {
+          packet_len = buf_size - cur_start;
+        }
+
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
         regions[region_count - 1].end_byte = cur_start + packet_len - 1;
@@ -627,9 +643,14 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
       {
         region_count++;
         //Extract the packet length
-        unsigned char temp[4];
-        memcpy(temp, mem, 4);
-        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
+        unsigned int packet_len = (mem[0] << 24) | (mem[1] << 16) | (mem[2] << 8) | (mem[3]);
+        
+        // This guard is for mutations - when the mutated 4 bytes give length that is larger than buf_size
+        // or when the mutated size is 0
+        if ((packet_len > buf_size - cur_start) || packet_len == 0) {
+          packet_len = buf_size - cur_start;
+        }
+
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
         regions[region_count - 1].end_byte = cur_start + packet_len - 1;
@@ -652,13 +673,18 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
         //Extract the packet code
         char code = mem[0];
         //Extract the packet length
-        unsigned char temp[4];
-        memcpy(temp, &mem[1], 4);
-        unsigned int packet_len = temp[3] + temp[2]*0x100 + temp[1]*0x10000 + temp[0]*0x1000000;
+        unsigned int packet_len = (mem[1] << 24) | (mem[2] << 16) | (mem[3] << 8) | (mem[4]);
+
+        // This guard is for mutations - when the mutated 4 bytes give length that is larger than buf_size
+        // or when the mutated size is 0
+        if ((packet_len > buf_size - cur_start) || packet_len == 0) {
+          packet_len = buf_size - cur_start;
+        }
+
         //unsigned int packet_hash = packet_len ^ code << 24;
         regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
         regions[region_count - 1].start_byte = cur_start;
-        regions[region_count - 1].end_byte = cur_start + packet_len; //No -1 because of Ceode byte before 4-length bytes
+        regions[region_count - 1].end_byte = cur_start + packet_len; // No -1 because of Code byte before 4-length bytes
         regions[region_count - 1].state_sequence = NULL;
         regions[region_count - 1].state_count = 0;
 
@@ -669,15 +695,16 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
       }
       //Check if the last byte has been reached
       else if (byte_count == buf_size)
-        {
-          region_count++;
-          regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
-          regions[region_count - 1].start_byte = cur_start;
-          regions[region_count - 1].end_byte = buf_size - cur_start - 1;
-          regions[region_count - 1].state_sequence = NULL;
-          regions[region_count - 1].state_count = 0;
-          break;
-        }
+      {
+        region_count++;
+        regions = (region_t *)ck_realloc(regions, region_count * sizeof(region_t));
+        regions[region_count - 1].start_byte = cur_start;
+        regions[region_count - 1].end_byte = buf_size - cur_start - 1;
+        regions[region_count - 1].state_sequence = NULL;
+        regions[region_count - 1].state_count = 0;
+
+        break;
+      }
     }
 
     //Enlarge the mem buffer
@@ -687,7 +714,6 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
       mem = (char *)ck_realloc(mem, mem_size);
     }          
   }
-  
 
   if (mem) ck_free(mem);
 
@@ -703,7 +729,6 @@ region_t *extract_requests_postgres(unsigned char *buf, unsigned int buf_size, u
     region_count = 1;
   }
   
-
   *region_count_ref = region_count;
   return regions;
 }
@@ -1481,8 +1506,9 @@ int net_recv(int sockfd, struct timeval timeout, int poll_w, char **response_buf
       }
       while (n > 0) {
         usleep(10);
-        *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n);
+        *response_buf = (unsigned char *)ck_realloc(*response_buf, *len + n + 1);
         memcpy(&(*response_buf)[*len], temp_buf, n);
+        (*response_buf)[(*len) + n] = '\0';
         *len = *len + n;
         n = recv(sockfd, temp_buf, sizeof(temp_buf), 0);
         if ((n < 0) && (errno != EAGAIN)) {
@@ -1613,16 +1639,16 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
 
   u8 *out = NULL;
 
-  char strState[11];
-  int len = 0;
+  char strState[STATE_STR_LEN];
+  size_t len = 0;
   for (i = 0; i < stateCount; i++) {
     //Limit the loop to shorten the output string
     if ((i >= 2) && (stateSequence[i] == stateSequence[i - 1]) && (stateSequence[i] == stateSequence[i - 2])) continue;
     unsigned int stateID = stateSequence[i];
     if (i == stateCount - 1) {
-      sprintf(strState, "%d", (int) stateID);
+      snprintf(strState, STATE_STR_LEN, "%d", (int) stateID);
     } else {
-      sprintf(strState, "%d-", (int) stateID);
+      snprintf(strState, STATE_STR_LEN, "%d-", (int) stateID);
     }
     out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
     memcpy(&out[len], strState, strlen(strState) + 1);
@@ -1630,12 +1656,12 @@ u8* state_sequence_to_string(unsigned int *stateSequence, unsigned int stateCoun
     //As Linux limit the size of the file name
     //we set a fixed upper bound here
     if (len > 150 && (i + 1 < stateCount)) {
-      sprintf(strState, "%s", "end-at-");
+      snprintf(strState, STATE_STR_LEN, "%s", "end-at-");
       out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
       memcpy(&out[len], strState, strlen(strState) + 1);
       len=strlen(out);
 
-      sprintf(strState, "%d", (int) stateSequence[stateCount - 1]);
+      snprintf(strState, STATE_STR_LEN, "%d", (int) stateSequence[stateCount - 1]);
       out = (u8 *)ck_realloc(out, len + strlen(strState) + 1);
       memcpy(&out[len], strState, strlen(strState) + 1);
       len=strlen(out);
